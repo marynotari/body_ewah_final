@@ -1,6 +1,6 @@
 # Browser to Browser Connection with Simple Peer, Socket.io and Express
 
-Authored by Lisa Jamhoury for The Body Weverywhere and Here, ITP, Fall 2020.
+Authored by Lisa Jamhoury for The Body Everywhere and Here, ITP, Fall 2020.
 
 This combines an Express Server with Socket.io Signal Server, and [Simple Peer](https://github.com/feross/simple-peer).
 
