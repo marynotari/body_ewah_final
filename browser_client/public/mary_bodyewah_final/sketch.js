@@ -1,174 +1,210 @@
+// Based on WebRTC Simple Peer Example — Frame Difference over webRTC
+// https://github.com/lisajamhoury/WebRTC-Simple-Peer-Examples
+// Created for The Body Everywhere and Here by Lisa Jamhoury
+// https://github.com/lisajamhoury/The-Body-Everywhere-And-Here/
+
+// This sketch shows two users' live webcam video next to eachother on the same p5 canvas
+// using webRTC peer connections. Each use can control the effects applied to the other user
+// using keystrokes. 
+// By default it runs over localhost.
+// Use with ngrok pointing to localhost:80 to run over the public internet.
+
+// Include this for to use p5 autofill in vscode
+// See https://stackoverflow.com/questions/30136319/what-is-reference-path-in-vscode
 /// <reference path="../shared/p5.d/p5.d.ts" />
 /// <reference path="../shared/p5.d/p5.global-mode.d.ts" />
 
-"use strict";
+// global variables
+let myWebcam;
+let pastPixels = [];
+let sendMyCanvas;
+let partnerWebcam;
+// variable for threshold value so you don't have to go searching for it
+let threshValue = 50;
 
-// Peer vairables 
-// aka variables that are sent between users
-let startPeer;
-let myVideo;
-let otherVideo;
-
-///// UNCOMMENT THIS IF YOU WANT MULTIPLE USERS ///
-// let otherUsers = [];
-
-// which state are we in?
-// always start with 1 (no change)
-let state = 1;
-
-//// DEFINE GLOBAL VARIABLES FOR EACH STATE HERE ////
-
+// Setup() is a p5 function
+// See this example if this is new to you
+// https://p5js.org/examples/structure-setup-and-draw.html
 function setup() {
-  createCanvas(640, 480, P2D); // canvas has same dimensions as my webcam
-  background(0);
-  stroke(0, 255, 0);
-  noFill();
+    // Make a p5 canvas the size of my webcam
+    createCanvas(640, 480);
 
-  // make sure the framerate is the same between sending and receiving
-  frameRate(30);
+    // create webcam then hide it
+    myWebcam = createCapture(VIDEO);
+    myWebcam.size(width/2, height/2);
+    myWebcam.hide(); // p5 automatically shows a copy of your live image below the canvas
 
-  // Set to true to turn on logging for the webrtc client
-  WebRTCPeerClient.setDebug(true);
+    // // create an empty image for partner webcam
+    // partnerWebcam = createImage(width/2, height/2); //<-- not sure why I need this
 
-  // To connect to server over public internet pass the ngrok address
-  // See https://github.com/lisajamhoury/WebRTC-Simple-Peer-Examples#to-run-signal-server-online-with-ngrok
-  WebRTCPeerClient.initSocketClient('https://XXXXXXXX.ngrok.io/');
+    // Fix the framerate to throttle data sending and receiving
+    frameRate(30);
 
-  // Start the peer client
-  WebRTCPeerClient.initPeerClient();
+    // Set to true to turn on logging for the webrtc client
+    WebRTCPeerClient.setDebug(false);
 
-  // start your video
-  // your webcam will always appear below the canvas
-  myVideo = createCapture(VIDEO);
-  myVideo.size(width, height);
-  myVideo.hide();
+    //   // Start socket client automatically on load
+    //   // By default it connects to http://localhost:80
+    //   WebRTCPeerClient.initSocketClient();
 
-  ////// HOW TO DEFINE OTHER PERSON'S VIDEO? //////
-  // otherVideo = createCapture(VIDEO);
-  // otherVideo.size(width, height);
+    // To connect to server over public internet pass the ngrok address
+    // See https://github.com/lisajamhoury/WebRTC-Simple-Peer-Examples#to-run-signal-server-online-with-ngrok
+    WebRTCPeerClient.initSocketClient('https://cd071cd6f9b6.ngrok.io');
 
+    // Start the peer client
+    WebRTCPeerClient.initPeerClient();
 }
 
+// Draw() is a p5 function
+// See this example if this is new to you
+// https://p5js.org/examples/structure-setup-and-draw.html
 function draw() {
-  // only proceed if the peer is started
-  if (!WebRTCPeerClient.isPeerStarted()) {
-    return;
-  }
-
-  WebRTCPeerClient.sendData(myVideo);
-
-  // get data from peer
-  const newData = WebRTCPeerClient.getData();
-
-  // if there's no data, don't continue
-  if (newData === null) {
-    return;
-  } else {
-    // Get the VIDEO data from newData.data
-    // Note: newData.data is the data sent by user
-    // Note: newData.userId is the peer ID of the user
-    otherVideo = newData.data;
-  }
-
-  ///// UNCOMMENT THIS FOR MULTIPLE USERS ///
-  // let foundMatch = false;
-  // // see if the data is from a user that already exists
-  // for (let i = 0; i < otherUsers.length; i++) {
-  //   // if the user exists
-  //   if (newData.userId === otherUsers[i].userId) {
-  //     // update their video
-  //     otherUsers[i].video = newData.data;
-  //     // we found a match!
-  //     foundMatch = true;
-  //   }
-  // }
-  // // if the user doesn't exist
-  // if (!foundMatch) {
-  //   // create a new user
-  //   let newUser = {
-  //     userId: newData.userId,
-  //     video: newData.data
-  //   };
-  //   // add them to the array
-  //   otherUsers.push(newUser);
-  // }
-  // // make sure we have at least one partner before drawing
-  // if (otherUsers.length < 1) return;
-
-
-  /***************** START MY VIDEO STUFF *****************/
-
-  // loadPixels() tells p5 to make the video's pixel array 
-  // available at .pixels
-  myVideo.loadPixels();
-
-  // get the current pixels from pixel array
-  const myCurrentPixels = myVideo.pixels;
-
-  // go through every pixel of the video on the x and y axes
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      // get the current position in the array
-      const i = (y * width + x) * 4;
-
-      ////// do something to the pixels //////
-
+    // Only proceed if the peer connection is started
+    if (!WebRTCPeerClient.isPeerStarted()) {
+        console.log('waiting for peer to start');
+        return;
     }
 
-    // update pixels so they show the changes you made above
-    myVideo.updatePixels();
+    redWebcam(myWebcam);
+    getPartnerWebcam();
+}
 
-    // flip the video image to be a mirror image of the user
-    // translate to the right corner of the canvas
-    translate(width, 0);
+function redWebcam(webcam) {
+    // load webcam pixels
+    // if this is not familiar watch this coding train video
+    // https://www.youtube.com/watch?v=nMUMZ5YRxHI
+    webcam.loadPixels();
+    const currentPixels = webcam.pixels;
 
-    // flip the horizontal access with -1 scale
-    scale(-1, 1);
+    // loop through webcam pixels
+    for (let i = 0; i < currentPixels.length; i += 4) {
+        // get the difference between the last frame and the current frame
+        // for each channel of the image: r, g, b, channels
+        const rDiff = abs(currentPixels[i + 0] - pastPixels[i + 0]);
+        const gDiff = abs(currentPixels[i + 1] - pastPixels[i + 1]);
+        const bDiff = abs(currentPixels[i + 2] - pastPixels[i + 2]);
 
-    // draw the my updated video to the canvas
-    image(myVideo, 0, 0, width / 2, height / 2);
-  }
-  /***************** END MY VIDEO STUFF *****************/
+        // set past pixels to current pixels
+        // do this before we alter the current pixels in the coming lines of code
+        pastPixels[i + 0] = currentPixels[i + 0];
+        pastPixels[i + 1] = currentPixels[i + 1];
+        pastPixels[i + 2] = currentPixels[i + 2];
+        pastPixels[i + 3] = currentPixels[i + 3];
 
-  // Updates drawing based on choosen animation state (1-4)
-  chooseAnimation();
+        // get the average difference for the pixel from the 3 color channels
+        const avgDiff = (rDiff + gDiff + bDiff) / 3; // 0-255
 
-  // Make sure there is a partner video before drawing
-  if (otherVideo !== null) {
-    /************** START OTHER VIDEO STUFF ***************/
+        // if the difference between frames is less than the threshold value
+        if (avgDiff < threshValue) {
+            //   // turn the current pixel black
+            //   currentPixels[i + 0] = 0;
+            //   currentPixels[i + 1] = 0;
+            //   currentPixels[i + 2] = 0;
+            //   currentPixels[i + 3] = 0; // transparent
 
-    // loadPixels() tells p5 to make the video's pixel array 
-    // available at .pixels
-    otherVideo.loadPixels();
-
-    // get the current pixels from pixel array
-    const otherCurrentPixels = otherVideo.pixels;
-
-    // go through every pixel of the video on the x and y axes
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        // get the current position in the array
-        const i = (y * width + x) * 4;
-
-        ////// do something to the pixels //////
-
-      }
-
-      // update pixels so they show the changes you made above
-      otherVideo.updatePixels();
-
-      // flip the video image to be a mirror image of the user
-      // translate to the right corner of the canvas
-      translate(width, 0);
-
-      // flip the horizontal access with -1 scale
-      scale(-1, 1);
-
-      // draw the other user's updated video to the canvas
-      // to the right of my video
-      image(otherVideo, width / 2, height / 2, width / 2, height / 2);
+            // image stays normal
+            currentPixels[i + 0] = currentPixels[i + 0];
+            currentPixels[i + 1] = currentPixels[i + 1];
+            currentPixels[i + 2] = currentPixels[i + 2];
+            currentPixels[i + 3] = currentPixels[i + 3]
+        } else {
+            // otherwise, turn it a soft red
+            currentPixels[i + 0] = 255;
+            currentPixels[i + 1] = 200;
+            currentPixels[i + 2] = 200;
+            // an alpha of 100 creates some nice smoothing
+            currentPixels[i + 3] = 255;
+        }
     }
-    /************** END OTHER VIDEO STUFF ****************/
-  }
 
-} //end draw()
+    // update pixels
+    // if this is not familiar watch the coding train video referenced above
+    webcam.updatePixels();
+
+    // send the webcam over the peer connection
+    sendMyWebcam(webcam);
+}
+
+function sendMyWebcam(webcam) {
+    // create a canvas
+    sendMyCanvas = createGraphics(width, height);
+    // mirror the canvas drawing
+    sendMyCanvas.translate(width, 0);
+    sendMyCanvas.scale(-1, 1);
+    // draw the webcam image on the canvas
+    sendMyCanvas.image(webcam, 0, 0, width, height);
+
+    // get a dataurl from the canvas
+    // make it a lossless webp
+    const myDataUrl = sendMyCanvas.canvas.toDataURL('image/webp', 1.0);
+
+    // send the dataurl over the peer connection
+    WebRTCPeerClient.sendData(myDataUrl);
+}
+
+function getPartnerWebcam() {
+    // get incoming data from peer
+    const newData = WebRTCPeerClient.getData();
+
+    // create a local variable for the incoming dataurl
+    let partnerDataUrl;
+
+    // if there is no data return
+    if (newData === null) {
+        return;
+        // If there is data
+    } else {
+        // Get the dataurl from newData.data
+        // Note: newData.data is the data sent by user
+        // Note: newData.userId is the peer ID of the user
+        partnerDataUrl = newData.data;
+    }
+
+    // load your partner's webcam
+    // loading webcam is asynchronous, so we need to load it like this
+    partnerWebcam = createCapture(partnerDataUrl);
+    // loadImage(partnerDataUrl, (pImg) => combineImages(pImg)); //<-- this is from Lisa's original sketch which overlayed images
+}
+
+// function drawPartnerWebcam(pWebcam) {
+//     {
+//         // get the pixels from partner webcam
+//         // combinedImg.loadPixels();
+//         pWebcam.loadPixels();
+//         // sendMyCanvas.loadPixels();
+
+//         // go through all the pixels
+//         for (let i = 0; i < combinedImg.pixels.length; i += 4) {
+//             if (pImg.pixels[i] > 0 && sendMyCanvas.pixels[i] > 0) {
+//                 // if both partners are on the pixel, make it white
+//                 combinedImg.pixels[i] = 255;
+//                 combinedImg.pixels[i + 1] = 255;
+//                 combinedImg.pixels[i + 2] = 255;
+//                 combinedImg.pixels[i + 3] = 255;
+//             } else if (pImg.pixels[i] > 0) {
+//                 // partner pixels are red
+//                 combinedImg.pixels[i] = 255;
+//                 combinedImg.pixels[i + 1] = 200;
+//                 combinedImg.pixels[i + 2] = 200;
+//                 combinedImg.pixels[i + 3] = 100;
+//             } else if (sendMyCanvas.pixels[i] > 0) {
+//                 // my pixels are blue
+//                 combinedImg.pixels[i] = 200;
+//                 combinedImg.pixels[i + 1] = 200;
+//                 combinedImg.pixels[i + 2] = 255;
+//                 combinedImg.pixels[i + 3] = 100;
+//             } else {
+//                 // none is black
+//                 combinedImg.pixels[i] = 0;
+//                 combinedImg.pixels[i + 1] = 0;
+//                 combinedImg.pixels[i + 2] = 0;
+//                 combinedImg.pixels[i + 3] = 255;
+//             }
+//         }
+
+//         // update all the pixels
+//         pWebcam.updatePixels();
+//         sendMyCanvas.updatePixels();
+//         // combinedImg.updatePixels();
+//     }
+// }
